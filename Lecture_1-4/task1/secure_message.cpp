@@ -3,7 +3,6 @@
 
 namespace context7
 {
-    // Приватный вспомогательный метод для копирования буфера
     void SecureMessage::copy_buffer(const char* src, size_t len) {
         for (size_t i = 0; i < len; ++i) {
             data_[i] = src[i];
@@ -11,8 +10,7 @@ namespace context7
         data_[len] = '\0';
     }
 
-    // Приватный вспомогательный метод для вычисления длины строки
-    size_t SecureMessage::compute_length(const char* str) {
+    size_t SecureMessage::compute_length(const char* str)  {
         if (!str) {
             return 0;
         }
@@ -33,16 +31,17 @@ namespace context7
         }
         
         length_ = compute_length(str);
-        data_ = new char[length_ + 1];
+        data_ = new char[length_ + 1]; // Если нет памяти, вылетит std::bad_alloc
         copy_buffer(str, length_);
     }
 
     SecureMessage::SecureMessage(const SecureMessage& other) {
         length_ = other.length_;
-        if (length_ == 0) {
+        if (length_ == 0 || !other.data_) {
             data_ = nullptr;
             return;
         }
+        
         data_ = new char[length_ + 1];
         copy_buffer(other.data_, length_);
     }
@@ -52,13 +51,15 @@ namespace context7
             return *this;
         }
         
-        if (other.length_ == 0) {
+        if (other.length_ == 0 || !other.data_) {
             delete[] data_;
             data_ = nullptr;
             length_ = 0;
             return *this;
         }
         
+        // Строгая гарантия исключений: если new бросит исключение,
+        // старые data_ и length_ не пострадают
         char* tmp = new char[other.length_ + 1];
         for (size_t i = 0; i <= other.length_; ++i) {
             tmp[i] = other.data_[i];
@@ -67,6 +68,7 @@ namespace context7
         delete[] data_;
         data_ = tmp;
         length_ = other.length_;
+        
         return *this;
     }
 
