@@ -1,4 +1,5 @@
 #CPP-task for training
+
 Task1:
 Твоя задача: Класс SecureMessage
 
