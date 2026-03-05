@@ -6,7 +6,9 @@ namespace context7 {
     private:
         char*  data_;
         size_t length_;
-
+        size_t compute_length(const char* str);
+        
+        void copy_buffer(const char* src, size_t len);
     public:
         SecureMessage();
         SecureMessage(const char* str);

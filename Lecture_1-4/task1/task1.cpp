@@ -1,51 +1,78 @@
-#include "utility"
+#include <utility>
 #include "task1_interface.hpp"
 
 namespace context7
 {
+    // Приватный вспомогательный метод для копирования буфера
+    void SecureMessage::copy_buffer(const char* src, size_t len) {
+        for (size_t i = 0; i < len; ++i) {
+            data_[i] = src[i];
+        }
+        data_[len] = '\0';
+    }
+
+    // Приватный вспомогательный метод для вычисления длины строки
+    size_t SecureMessage::compute_length(const char* str) {
+        if (!str) {
+            return 0;
+        }
+        size_t len = 0;
+        while (str[len] != '\0') {
+            ++len;
+        }
+        return len;
+    }
+
     SecureMessage::SecureMessage() : data_(nullptr), length_(0) {}
 
     SecureMessage::SecureMessage(const char* str) {
-        size_t len_tmp = 0;
-        while (str[len_tmp] != '\0') {
-            ++len_tmp;
+        if (!str) {
+            data_ = nullptr;
+            length_ = 0;
+            return;
         }
-        length_ = len_tmp;
-        data_   = new char[length_ + 1];
-        for (size_t i = 0; i < length_; ++i) {
-            data_[i] = str[i];
-        }
-        data_[length_] = '\0';
+        
+        length_ = compute_length(str);
+        data_ = new char[length_ + 1];
+        copy_buffer(str, length_);
     }
 
     SecureMessage::SecureMessage(const SecureMessage& other) {
         length_ = other.length_;
-        data_   = new char[length_ + 1];
-        for (size_t i = 0; i < length_; ++i) {
-            data_[i] = other.data_[i];
+        if (length_ == 0) {
+            data_ = nullptr;
+            return;
         }
-        data_[length_] = '\0';
+        data_ = new char[length_ + 1];
+        copy_buffer(other.data_, length_);
     }
 
     SecureMessage& SecureMessage::operator=(const SecureMessage& other) {
         if (this == &other) {
             return *this;
         }
+        
+        if (other.length_ == 0) {
+            delete[] data_;
+            data_ = nullptr;
+            length_ = 0;
+            return *this;
+        }
+        
         char* tmp = new char[other.length_ + 1];
-        for (size_t i = 0; i < other.length_; ++i) {
+        for (size_t i = 0; i <= other.length_; ++i) {
             tmp[i] = other.data_[i];
         }
-        tmp[other.length_] = '\0';
-
+        
         delete[] data_;
-        data_   = tmp;
+        data_ = tmp;
         length_ = other.length_;
         return *this;
     }
 
     SecureMessage::SecureMessage(SecureMessage&& other) noexcept
         : data_(other.data_), length_(other.length_) {
-        other.data_   = nullptr;
+        other.data_ = nullptr;
         other.length_ = 0;
     }
 
@@ -54,7 +81,7 @@ namespace context7
             return *this;
         }
         delete[] data_;
-        data_   = std::exchange(other.data_, nullptr);
+        data_ = std::exchange(other.data_, nullptr);
         length_ = std::exchange(other.length_, 0);
         return *this;
     }
