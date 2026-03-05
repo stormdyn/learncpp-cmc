@@ -24,10 +24,12 @@ namespace context7
     {
         private:
             char key_;
+            SecureMessage xor_func(const SecureMessage& text) const;
             
         public:
             explicit XorCipher(char key);
             SecureMessage encrypt(const SecureMessage& plain) const override;
             SecureMessage decrypt(const SecureMessage& cipher) const override;
     };
+
 }

@@ -3,18 +3,16 @@
 
 namespace context7
 {
-    CaesarCipher::CaesarCipher(int shift)
-    {
-        shift_ = shift;
-    }
+    CaesarCipher::CaesarCipher(int shift) : shift_(shift) {}
 
     SecureMessage CaesarCipher::encrypt(const SecureMessage& plain) const
     {
         const char * data = plain.get_data();
         size_t length = plain.get_length();
-        char * buffer = new char[length + 1];
+        if (length == 0 || !data) return SecureMessage();
 
-        for (int i = 0; i < length; i++)
+        char * buffer = new char[length + 1];
+        for (size_t i = 0; i < length; i++)
         {
             buffer[i] = shift_ + data[i];
         }
@@ -30,9 +28,10 @@ namespace context7
     {
         const char * data = cipher.get_data();
         size_t length = cipher.get_length();
-        char * buffer = new char[length + 1];
+        if (length == 0 || !data) return SecureMessage();
 
-        for (int i = 0; i < length; i++)
+        char * buffer = new char[length + 1];
+        for (size_t i = 0; i < length; i++)
         {
             buffer[i] = data[i] - shift_;
         }
@@ -45,39 +44,34 @@ namespace context7
     }
 
 
-    SecureMessage XorCipher::encrypt(const SecureMessage& plain) const
-    {
-        const char * data = plain.get_data();
-        size_t length = plain.get_length();
-        char * buffer = new char[length + 1];
+    XorCipher::XorCipher(char key) : key_(key) {}
 
-        for (int i = 0; i < length; i++)
+    SecureMessage XorCipher::xor_func(const SecureMessage& text) const
+    {
+        const char * data = text.get_data();
+        size_t length = text.get_length();
+        if (length == 0 || !data) return SecureMessage();
+
+        char * buffer = new char[length + 1];
+        for (size_t i = 0; i < length; i++)
         {
             buffer[i] = key_ ^ data[i];
         }
 
         buffer[length] = '\0';
-        SecureMessage cipher(buffer);
+        SecureMessage result(buffer);
 
         delete[] buffer;
-        return cipher;
+        return result;
+    }
+
+    SecureMessage XorCipher::encrypt(const SecureMessage& plain) const
+    {
+        return xor_func(plain);
     }
 
     SecureMessage XorCipher::decrypt(const SecureMessage& cipher) const
     {
-        const char * data = cipher.get_data();
-        size_t length = cipher.get_length();
-        char * buffer = new char[length + 1];
-
-        for (int i = 0; i < length; i++)
-        {
-            buffer[i] = key_ ^ data[i];
-        }
-
-        buffer[length] = '\0';
-        SecureMessage plain(buffer);
-
-        delete[] buffer;
-        return plain;
+        return xor_func(cipher);
     }
 }
