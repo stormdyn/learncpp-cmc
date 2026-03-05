@@ -13,6 +13,8 @@ namespace context7
     {
         private:
             int shift_;
+            SecureMessage shift_func(const SecureMessage& text, const int shift) const;
+
         public:
             explicit CaesarCipher(int shift);
 

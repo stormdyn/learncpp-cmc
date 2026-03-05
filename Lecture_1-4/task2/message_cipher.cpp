@@ -5,42 +5,33 @@ namespace context7
 {
     CaesarCipher::CaesarCipher(int shift) : shift_(shift) {}
 
-    SecureMessage CaesarCipher::encrypt(const SecureMessage& plain) const
+    SecureMessage CaesarCipher::shift_func(const SecureMessage& text, const int shift) const
     {
-        const char * data = plain.get_data();
-        size_t length = plain.get_length();
+        const char * data = text.get_data();
+        size_t length = text.get_length();
         if (length == 0 || !data) return SecureMessage();
 
         char * buffer = new char[length + 1];
         for (size_t i = 0; i < length; i++)
         {
-            buffer[i] = shift_ + data[i];
+            buffer[i] = shift + data[i];
         }
 
         buffer[length] = '\0';
-        SecureMessage cipher(buffer);
+        SecureMessage result(buffer);
 
         delete[] buffer;
-        return cipher;
+        return result;
+    }
+
+    SecureMessage CaesarCipher::encrypt(const SecureMessage& plain) const
+    {
+        return shift_func(plain, shift_);
     }
     
     SecureMessage CaesarCipher::decrypt(const SecureMessage& cipher) const
     {
-        const char * data = cipher.get_data();
-        size_t length = cipher.get_length();
-        if (length == 0 || !data) return SecureMessage();
-
-        char * buffer = new char[length + 1];
-        for (size_t i = 0; i < length; i++)
-        {
-            buffer[i] = data[i] - shift_;
-        }
-
-        buffer[length] = '\0';
-        SecureMessage plain(buffer);
-
-        delete[] buffer;
-        return plain;
+        return shift_func(cipher, -shift_);
     }
 
 
