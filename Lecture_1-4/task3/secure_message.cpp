@@ -165,6 +165,7 @@ namespace context7
         {
             tmp[i + length_] = other.data_[i];
         }
+        tmp[length_ + other.length_] = '\0';
         delete [] data_;
         data_ = tmp;
         length_ += other.length_;
