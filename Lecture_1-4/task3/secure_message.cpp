@@ -134,10 +134,9 @@ namespace context7
 
     SecureMessage SecureMessage::operator+(const SecureMessage& other) const
     {
-        SecureMessage result(data_);
+        SecureMessage result;
 
         result.length_ = length_ + other.get_length();
-        delete [] result.data_;
         result.data_ = new char[result.length_ + 1];
 
         for (int i = 0; i < length_; i++)
@@ -149,6 +148,7 @@ namespace context7
         {
             result.data_[i + length_] = other.data_[i];
         }
+        result.data_[result.length_] = '\0';
 
         return result;
     }
@@ -156,18 +156,18 @@ namespace context7
     SecureMessage& SecureMessage::operator+=(const SecureMessage& other)
     {
         length_ += other.get_length();
-        char * tmp = data_;
-        data_ = new char[length_ + 1];
-        for (int i = 0; i < length_ - other.get_length(); i++)
+        char * tmp = new char[length_ + 1];
+        for (size_t i = 0; i < length_ - other.get_length(); i++)
         {
-            data_[i] = tmp[i];
+            tmp[i] = data_[i];
         }
 
-        for (int i = 0; i < other.get_length(); i++)
+        for (size_t i = 0; i < other.get_length(); i++)
         {
-            data_[i + length_] = other.data_[i];
+            tmp[i + length_ - other.length_] = other.data_[i];
         }
-        delete [] tmp;
+        delete [] data_;
+        data_ = tmp;
 
         return *this;
     }
@@ -194,7 +194,10 @@ namespace context7
 
     std::ostream& operator<<(std::ostream& os, const SecureMessage& msg)
     {
-        os << msg.get_data();
+        if (msg.get_data() != nullptr)
+        {
+            os << msg.get_data();
+        }
         return os;
     }
 }
