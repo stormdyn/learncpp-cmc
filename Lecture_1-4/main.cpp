@@ -87,6 +87,6 @@ int main() {
     test_operators();
     test_polymorphism();
     
-    std::cout << "\nAll tests passed successfully! You are breathtaking!\n";
+    std::cout << "\nAll tests passed successfully!";
     return 0;
 }
