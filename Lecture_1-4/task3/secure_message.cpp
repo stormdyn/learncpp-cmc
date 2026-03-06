@@ -1,3 +1,6 @@
+#include <cstddef>
+#include <ostream>
+#include <stdexcept>
 #include <utility>
 #include "secure_message.hpp"
 
@@ -148,5 +151,50 @@ namespace context7
         }
 
         return result;
+    }
+
+    SecureMessage& SecureMessage::operator+=(const SecureMessage& other)
+    {
+        length_ += other.get_length();
+        char * tmp = data_;
+        data_ = new char[length_ + 1];
+        for (int i = 0; i < length_ - other.get_length(); i++)
+        {
+            data_[i] = tmp[i];
+        }
+
+        for (int i = 0; i < other.get_length(); i++)
+        {
+            data_[i + length_] = other.data_[i];
+        }
+        delete [] tmp;
+
+        return *this;
+    }
+
+    char& SecureMessage::op_index(size_t index) const
+    {
+        if (index >= length_)
+        {
+            throw std::out_of_range("Index out of range");
+        }
+
+        return data_[index];
+    }
+
+    char& SecureMessage::operator[](size_t index)
+    {
+        return op_index(index);
+    }
+
+    const char& SecureMessage::operator[](size_t index) const
+    {
+        return op_index(index);
+    }
+
+    std::ostream& operator<<(std::ostream& os, const SecureMessage& msg)
+    {
+        os << msg.get_data();
+        return os;
     }
 }
