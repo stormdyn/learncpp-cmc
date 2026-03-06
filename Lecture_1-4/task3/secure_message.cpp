@@ -155,24 +155,24 @@ namespace context7
 
     SecureMessage& SecureMessage::operator+=(const SecureMessage& other)
     {
-        length_ += other.get_length();
-        char * tmp = new char[length_ + 1];
-        for (size_t i = 0; i < length_ - other.get_length(); i++)
+        char * tmp = new char[length_ + other.length_ + 1];
+        for (size_t i = 0; i < length_; i++)
         {
             tmp[i] = data_[i];
         }
 
-        for (size_t i = 0; i < other.get_length(); i++)
+        for (size_t i = 0; i < other.length_; i++)
         {
-            tmp[i + length_ - other.length_] = other.data_[i];
+            tmp[i + length_] = other.data_[i];
         }
         delete [] data_;
         data_ = tmp;
+        length_ += other.length_;
 
         return *this;
     }
 
-    char& SecureMessage::op_index(size_t index) const
+    char& SecureMessage::operator[](size_t index)
     {
         if (index >= length_)
         {
@@ -182,14 +182,14 @@ namespace context7
         return data_[index];
     }
 
-    char& SecureMessage::operator[](size_t index)
-    {
-        return op_index(index);
-    }
-
     const char& SecureMessage::operator[](size_t index) const
     {
-        return op_index(index);
+        if (index >= length_)
+        {
+            throw std::out_of_range("Index out of range");
+        }
+
+        return data_[index];
     }
 
     std::ostream& operator<<(std::ostream& os, const SecureMessage& msg)

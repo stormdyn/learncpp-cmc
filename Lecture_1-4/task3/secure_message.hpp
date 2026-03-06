@@ -10,7 +10,6 @@ namespace context7 {
         size_t compute_length(const char* str);
         
         void copy_buffer(const char* src, size_t len);
-        char& op_index(size_t index) const;
     public:
         SecureMessage();
         SecureMessage(const char* str);
