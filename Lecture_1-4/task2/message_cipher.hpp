@@ -1,4 +1,6 @@
-#include "../task1/secure_message.hpp"
+#pragma once
+
+#include "../task3/secure_message.hpp"
 namespace context7 
 {
     class MessageCipher
