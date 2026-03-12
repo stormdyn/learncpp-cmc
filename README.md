@@ -163,7 +163,7 @@ int main() {
 
 ### Task 4: Шаблонный стек с исключениями и RTTI
 
-Реализовать шаблонный контейнер `Stack<T, MaxSize>` в `namespace context7` с полноценной обработкой исключений и применением RTTI. Задача охватывает три ключевые темы лекции 5: шаблоны классов/функций, иерархию исключений и `dynamic_cast`/`typeid`.
+Реализовать шаблонный контейнер `Stack<T, MaxSize>` с полноценной обработкой исключений и применением RTTI. Задача охватывает три ключевые темы лекции 5: шаблоны классов/функций, иерархию исключений и `dynamic_cast`/`typeid`.
 
 #### Часть А: Иерархия исключений `StackError`
 
@@ -174,8 +174,6 @@ int main() {
 #pragma once
 #include <exception>
 #include <string>
-
-namespace context7 {
 
 class StackError : public std::exception {
 protected:
@@ -197,8 +195,6 @@ public:
     explicit StackUnderflow()
         : StackError("Stack underflow: cannot pop from an empty stack") {}
 };
-
-} // namespace context7
 ```
 
 #### Часть Б: Шаблонный класс `Stack<T, MaxSize>`
@@ -220,10 +216,16 @@ public:
 #pragma once
 #include "stack_errors.hpp"
 
-namespace context7 {
+class IStack {
+public:
+    virtual int  size()     const noexcept = 0;
+    virtual bool is_empty() const noexcept = 0;
+    virtual bool is_full()  const noexcept = 0;
+    virtual ~IStack() = default;
+};
 
 template <typename T, int MaxSize>
-class Stack {
+class Stack : public IStack {
 private:
     T data_[MaxSize];
     int top_ = 0;
@@ -231,12 +233,10 @@ public:
     void push(const T& value);
     T pop();
     const T& peek() const;
-    bool is_empty() const noexcept { return top_ == 0; }
-    bool is_full()  const noexcept { return top_ == MaxSize; }
-    int  size()     const noexcept { return top_; }
+    bool is_empty() const noexcept override { return top_ == 0; }
+    bool is_full()  const noexcept override { return top_ == MaxSize; }
+    int  size()     const noexcept override { return top_; }
 };
-
-} // namespace context7
 
 #include "stack_impl.hpp"  // реализация шаблона — в отдельном .hpp
 ```
@@ -245,20 +245,7 @@ public:
 
 #### Часть В: Шаблонная функция `print_stack_info`
 
-Написать шаблонную функцию, которая принимает стек **по ссылке на базовый полиморфный интерфейс** — но сначала нужно добавить абстрактный интерфейс:
-
-```cpp
-// Добавить в stack.hpp перед Stack<T,MaxSize>:
-class IStack {
-public:
-    virtual int  size()     const noexcept = 0;
-    virtual bool is_empty() const noexcept = 0;
-    virtual bool is_full()  const noexcept = 0;
-    virtual ~IStack() = default;
-};
-```
-
-Сделать `Stack<T, MaxSize>` наследником `IStack`. Затем написать функцию:
+Написать шаблонную функцию:
 
 ```cpp
 template <typename T, int MaxSize>
@@ -268,19 +255,15 @@ void print_stack_info(const Stack<T, MaxSize>& s);
 Функция должна:
 1. Вывести `typeid(T).name()` — тип элементов стека.
 2. Вывести `size()`, `is_empty()`, `is_full()`.
-3. Принять `IStack*` (указатель на базовый класс) и через `dynamic_cast<const Stack<T, MaxSize>*>` проверить корректность типа — вывести `"[RTTI OK]"` или `"[RTTI FAIL]"`.
+3. Получить `IStack*` через `static_cast` и через `dynamic_cast<const Stack<T, MaxSize>*>` проверить корректность типа — вывести `"[RTTI OK]"` или `"[RTTI FAIL]"`.
 
 #### Часть Г: `main.cpp` — демонстрация и обработка ошибок
-
-Написать `main.cpp`, демонстрирующий:
 
 ```cpp
 #include "stack.hpp"
 #include <iostream>
 
 int main() {
-    using namespace context7;
-
     Stack<int, 5> int_stack;
     print_stack_info<int, 5>(int_stack);
 
@@ -292,9 +275,9 @@ int main() {
     try {
         int_stack.push(999);
     } catch (const StackOverflow& e) {
-        std::cerr << "[StackOverflow] " << e.what() << "\n";
+        std::cerr << "[StackOverflow]  " << e.what() << "\n";
     } catch (const StackError& e) {
-        std::cerr << "[StackError]    " << e.what() << "\n";
+        std::cerr << "[StackError]     " << e.what() << "\n";
     }
 
     // Выгрузить весь стек
@@ -336,14 +319,14 @@ main.cpp           — демонстрация
 - Исключения наследовать от `std::exception` и переопределять `what()`.
 - Демонстрировать `catch` по иерархии: сначала производный тип, затем базовый (`StackOverflow` → `StackError` → `std::exception`).
 - Использовать `typeid` и `dynamic_cast` в `print_stack_info`.
-- Проверить отсутствие утечек памяти через `valgrind` (стек на массиве — ручного `new` нет, но проверить всё равно).
+- Проверить отсутствие утечек памяти через `valgrind`.
 
 ---
 
 ## Общие требования ко всем задачам
 
 - **Стандарт:** C++23
-- **Стиль:** объектно-ориентированный, `namespace context7`
+- **Стиль:** объектно-ориентированный
 - **Ограничения:**
   - Функции не более 25 строк (обоснованные исключения допустимы)
   - Повторяющийся код выносить в отдельные функции
