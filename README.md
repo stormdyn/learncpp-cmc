@@ -165,9 +165,23 @@ int main() {
 
 Реализовать шаблонный контейнер `Stack<T, MaxSize>` с полноценной обработкой исключений и применением RTTI. Задача охватывает три ключевые темы лекции 5: шаблоны классов/функций, иерархию исключений и `dynamic_cast`/`typeid`.
 
+---
+
 #### Часть А: Иерархия исключений `StackError`
 
-Определить собственную иерархию исключений, наследующуюся от `std::exception`:
+Цель: научиться определять собственные типы исключений, интегрировать их в стандартную иерархию `std::exception` и демонстрировать правило чтения `catch` по иерархии.
+
+**Структура иерархии:**
+```
+std::exception
+    └── StackError          ← базовое: хранит сообщение, переопределяет what()
+            ├── StackOverflow   ← пуш в полный стек
+            └── StackUnderflow  ← поп/пик с пустого стека
+```
+
+**Почему `msg_` защищён, а не приватен?** Дочерние классы должны видеть поле в собственных конструкторах, чтобы можно было добавлять контекст к сообщению (например, значение `top_` на момент броска).
+
+**Почему не `const char*` вместо `std::string`?** При броске исключения `what()` должен возвращать указатель на данные, которые живут дольше самого объекта; хранение в `std::string` как поле гарантирует это.
 
 ```cpp
 // stack_errors.hpp
@@ -197,19 +211,15 @@ public:
 };
 ```
 
-#### Часть Б: Шаблонный класс `Stack<T, MaxSize>`
+> **Подводный камень:** конструктор `StackError` должен быть `explicit` — нечаянное неявное преобразование из `std::string` — это частая ошибка.
 
-Требования к классу:
+---
 
-- Шаблонные параметры: `typename T` и `int MaxSize`.
-- Приватные поля: `T data_[MaxSize]` и `int top_` (индекс следующей свободной позиции, начальное значение `0`).
-- Методы:
-  - `void push(const T& value)` — добавляет элемент на вершину; бросает `StackOverflow` если `top_ == MaxSize`.
-  - `T pop()` — снимает и возвращает вершину; бросает `StackUnderflow` если стек пуст.
-  - `const T& peek() const` — возвращает вершину без снятия; бросает `StackUnderflow` если пуст.
-  - `bool is_empty() const noexcept`
-  - `bool is_full() const noexcept`
-  - `int size() const noexcept`
+#### Часть Б: Абстрактный интерфейс `IStack` и шаблон `Stack<T, MaxSize>`
+
+Цель `IStack`: получить указатель на базовый полиморфный тип, чтобы затем применить `dynamic_cast` для RTTI-проверки. Без виртуальной функции в базовом классе `dynamic_cast` работать не будет.
+
+**Два шаблонных параметра** — это non-type template parameter. `MaxSize` — значение, известное на этапе компиляции, поэтому массив размещается на стеке без кучи. `Stack<int,5>` и `Stack<int,10>` — разные типы.
 
 ```cpp
 // stack.hpp
@@ -227,35 +237,73 @@ public:
 template <typename T, int MaxSize>
 class Stack : public IStack {
 private:
-    T data_[MaxSize];
+    T   data_[MaxSize];
     int top_ = 0;
 public:
-    void push(const T& value);
-    T pop();
-    const T& peek() const;
+    void       push(const T& value);  // throw StackOverflow
+    T          pop();                 // throw StackUnderflow
+    const T&   peek() const;          // throw StackUnderflow
     bool is_empty() const noexcept override { return top_ == 0; }
     bool is_full()  const noexcept override { return top_ == MaxSize; }
     int  size()     const noexcept override { return top_; }
 };
 
-#include "stack_impl.hpp"  // реализация шаблона — в отдельном .hpp
+#include "stack_impl.hpp"
 ```
 
-> **Примечание:** реализацию методов шаблонного класса помещать в `stack_impl.hpp`, который включается в конце `stack.hpp` (стандартная практика для template definitions).
+**Алгоритм реализации методов** (`stack_impl.hpp`):
+
+```cpp
+// stack_impl.hpp  (не нужен #pragma once — включается ровно один раз через stack.hpp)
+
+template <typename T, int MaxSize>
+void Stack<T, MaxSize>::push(const T& value) {
+    if (is_full()) throw StackOverflow{};
+    data_[top_++] = value;
+}
+
+template <typename T, int MaxSize>
+T Stack<T, MaxSize>::pop() {
+    if (is_empty()) throw StackUnderflow{};
+    return data_[--top_];  // top_ уменьшается до возврата
+}
+
+template <typename T, int MaxSize>
+const T& Stack<T, MaxSize>::peek() const {
+    if (is_empty()) throw StackUnderflow{};
+    return data_[top_ - 1];
+}
+```
+
+> **Подводный камень:** `T pop()` возвращает **копию** — элемент на вершине не удаляется, только уменьшается `top_`. Если T не copy-constructible — код не скомпилируется.
+
+---
 
 #### Часть В: Шаблонная функция `print_stack_info`
 
-Написать шаблонную функцию:
+Цель: практика `typeid` и `dynamic_cast` на реальном примере. Функция тоже шаблонная — пример шаблонной функции помимо шаблонного класса.
 
 ```cpp
+// объявить в stack.hpp после определения Stack,
+// или отдельно в stack_impl.hpp
 template <typename T, int MaxSize>
-void print_stack_info(const Stack<T, MaxSize>& s);
+void print_stack_info(const Stack<T, MaxSize>& s) {
+    // 1. typeid: тип элементов
+    std::cout << "Stack<" << typeid(T).name() << ", " << MaxSize << ">\n";
+    std::cout << "  size=" << s.size()
+              << "  empty=" << s.is_empty()
+              << "  full=" << s.is_full() << "\n";
+
+    // 2. dynamic_cast: RTTI-проверка через базовый интерфейс
+    const IStack* base = static_cast<const IStack*>(&s);
+    const auto*   derived = dynamic_cast<const Stack<T, MaxSize>*>(base);
+    std::cout << "  RTTI: " << (derived ? "[OK]" : "[FAIL]") << "\n";
+}
 ```
 
-Функция должна:
-1. Вывести `typeid(T).name()` — тип элементов стека.
-2. Вывести `size()`, `is_empty()`, `is_full()`.
-3. Получить `IStack*` через `static_cast` и через `dynamic_cast<const Stack<T, MaxSize>*>` проверить корректность типа — вывести `"[RTTI OK]"` или `"[RTTI FAIL]"`.
+> **Почему `static_cast` а не просто взять `&s`?** `dynamic_cast` работает только по указателю/ссылке на полиморфный тип. Делаем имитацию реального сценария: есть `IStack*`, хотим узнать реальный тип.
+
+---
 
 #### Часть Г: `main.cpp` — демонстрация и обработка ошибок
 
@@ -267,17 +315,21 @@ int main() {
     Stack<int, 5> int_stack;
     print_stack_info<int, 5>(int_stack);
 
-    // Заполнить стек
+    // Заполнить стек до краёв
     for (int i = 1; i <= 5; ++i)
         int_stack.push(i * 10);
 
-    // Попытка переполнения
+    print_stack_info<int, 5>(int_stack);
+
+    // Попытка переполнения — catch по иерархии
     try {
         int_stack.push(999);
-    } catch (const StackOverflow& e) {
+    } catch (const StackOverflow& e) {           // сначала производный
         std::cerr << "[StackOverflow]  " << e.what() << "\n";
-    } catch (const StackError& e) {
+    } catch (const StackError& e) {              // затем базовый
         std::cerr << "[StackError]     " << e.what() << "\n";
+    } catch (const std::exception& e) {          // последний резерв
+        std::cerr << "[std::exception] " << e.what() << "\n";
     }
 
     // Выгрузить весь стек
@@ -292,7 +344,14 @@ int main() {
         std::cerr << "[StackUnderflow] " << e.what() << "\n";
     }
 
-    // Стек строк
+    // Проверка peek на пустом стеке
+    try {
+        int_stack.peek();
+    } catch (const StackUnderflow& e) {
+        std::cerr << "[StackUnderflow] " << e.what() << "\n";
+    }
+
+    // Инстанциация с другим типом
     Stack<const char*, 3> str_stack;
     str_stack.push("hello");
     str_stack.push("world");
@@ -302,14 +361,46 @@ int main() {
 }
 ```
 
+**Ожидаемый вывод:**
+```
+Stack<i, 5>
+  size=0  empty=1  full=0
+  RTTI: [OK]
+Stack<i, 5>
+  size=5  empty=0  full=1
+  RTTI: [OK]
+[StackOverflow]  Stack overflow: cannot push to a full stack
+50 40 30 20 10
+[StackUnderflow] Stack underflow: cannot pop from an empty stack
+[StackUnderflow] Stack underflow: cannot pop from an empty stack
+Stack<PKc, 3>
+  size=2  empty=0  full=0
+  RTTI: [OK]
+```
+
+> `typeid(int).name()` на GCC даёт `i`, на MSVC — `int`. Для человеческого вывода можно дополнительно использовать `abi::__cxa_demangle` (необязательно).
+
+---
+
 #### Структура файлов:
 
 ```
-stack_errors.hpp   — иерархия исключений
-stack.hpp          — интерфейс IStack + объявление Stack<T,N>
-stack_impl.hpp     — реализация методов шаблона
+stack_errors.hpp   — иерархия исключений (StackError, StackOverflow, StackUnderflow)
+stack.hpp          — IStack + объявление Stack<T,N> + объявление print_stack_info
+stack_impl.hpp     — реализация push/pop/peek + реализация print_stack_info
 main.cpp           — демонстрация
 ```
+
+#### Чеклист для самопроверки:
+
+- [ ] `StackOverflow` пойман раньше `StackError` в цепочке `catch`
+- [ ] `StackUnderflow` пойман раньше `StackError` в цепочке `catch`
+- [ ] `dynamic_cast` возвращает не-`nullptr` (вывод `[RTTI OK]`)
+- [ ] `Stack<int,5>` и `Stack<double,5>` — независимые типы, не конвертируются друг в друга
+- [ ] `valgrind --leak-check=full` — отсутствие утечек
+- [ ] `peek()` не модифицирует стек (проверить: `peek()` -> `push()` -> вершина не изменилась)
+
+---
 
 #### Общие требования к Task 4:
 
