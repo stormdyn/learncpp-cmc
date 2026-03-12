@@ -169,60 +169,51 @@ int main() {
 
 #### Часть А: Иерархия исключений `StackError`
 
-Цель: научиться определять собственные типы исключений, интегрировать их в стандартную иерархию `std::exception` и демонстрировать правило чтения `catch` по иерархии.
+Определить собственную иерархию исключений, интегрировав их в стандартную иерархию `std::exception`:
 
-**Структура иерархии:**
 ```
 std::exception
-    └── StackError          ← базовое: хранит сообщение, переопределяет what()
-            ├── StackOverflow   ← пуш в полный стек
-            └── StackUnderflow  ← поп/пик с пустого стека
+    └── StackError          ← базовое: хранит сообщение (поле msg_), переопределяет what()
+            ├── StackOverflow   ← бросается в push(), если стек полон
+            └── StackUnderflow  ← бросается в pop()/peek(), если стек пуст
 ```
 
-**Почему `msg_` защищён, а не приватен?** Дочерние классы должны видеть поле в собственных конструкторах, чтобы можно было добавлять контекст к сообщению (например, значение `top_` на момент броска).
+**Требования к классам:**
+- `StackError`: поле `msg_` — `protected` (не `private`), чтобы дочерние классы могли добавлять контекст к сообщению. `what()` переопределяется через `msg_.c_str()`, поэтому тип хранения — `std::string`, а не `const char*` (указатель должен жить дольше объекта).
+- `StackOverflow` и `StackUnderflow`: конструктор без параметров, сообщение прописывается через базовый.
+- **Подводный камень:** конструктор `StackError(const std::string&)` должен быть `explicit` — неявное преобразование из `std::string` — частая ошибка.
+- **Почему `catch` по `StackOverflow` должен стоять выше `catch` по `StackError`?** Потому что `StackOverflow` is-a `StackError`: если поставить базовый `catch` первым — он поймает всё и производный `catch` никогда не сработает.
 
-**Почему не `const char*` вместо `std::string`?** При броске исключения `what()` должен возвращать указатель на данные, которые живут дольше самого объекта; хранение в `std::string` как поле гарантирует это.
+#### Структура `stack_errors.hpp`:
 
 ```cpp
-// stack_errors.hpp
 #pragma once
 #include <exception>
 #include <string>
 
-class StackError : public std::exception {
-protected:
-    std::string msg_;
-public:
-    explicit StackError(const std::string& msg) : msg_(msg) {}
-    const char* what() const noexcept override { return msg_.c_str(); }
-    virtual ~StackError() = default;
-};
-
-class StackOverflow : public StackError {
-public:
-    explicit StackOverflow()
-        : StackError("Stack overflow: cannot push to a full stack") {}
-};
-
-class StackUnderflow : public StackError {
-public:
-    explicit StackUnderflow()
-        : StackError("Stack underflow: cannot pop from an empty stack") {}
-};
+class StackError : public std::exception { /* ... */ };
+class StackOverflow  : public StackError  { /* ... */ };
+class StackUnderflow : public StackError  { /* ... */ };
 ```
-
-> **Подводный камень:** конструктор `StackError` должен быть `explicit` — нечаянное неявное преобразование из `std::string` — это частая ошибка.
 
 ---
 
 #### Часть Б: Абстрактный интерфейс `IStack` и шаблон `Stack<T, MaxSize>`
 
-Цель `IStack`: получить указатель на базовый полиморфный тип, чтобы затем применить `dynamic_cast` для RTTI-проверки. Без виртуальной функции в базовом классе `dynamic_cast` работать не будет.
+**`IStack`** — абстрактный базовый класс без шаблонных параметров. Он нужен чтобы иметь полиморфный базовый тип для `dynamic_cast` — без виртуальной функции в базовом классе RTTI работать не будет. Объявляет три чисто виртуальных метода: `size()`, `is_empty()`, `is_full()`.
 
-**Два шаблонных параметра** — это non-type template parameter. `MaxSize` — значение, известное на этапе компиляции, поэтому массив размещается на стеке без кучи. `Stack<int,5>` и `Stack<int,10>` — разные типы.
+**`Stack<T, MaxSize>`** наследует от `IStack` и имеет два шаблонных параметра: `typename T` и `int MaxSize`. `MaxSize` — non-type template parameter, поэтому массив `data_[MaxSize]` размещается на стеке без `new`. `Stack<int,5>` и `Stack<int,10>` — разные типы.
+
+**Методы** (реализацию поместить в `stack_impl.hpp`):
+- `void push(const T& value)` — если стек полон, бросает `StackOverflow`; иначе записывает `value` на вершину и увеличивает `top_`.
+- `T pop()` — если стек пуст, бросает `StackUnderflow`; иначе уменьшает `top_` и возвращает копию элемента (не удаляет его физически).
+- `const T& peek() const` — если стек пуст, бросает `StackUnderflow`; иначе возвращает `const`-ссылку на вершину без изменения `top_`.
+- `is_empty()`, `is_full()`, `size()` — `noexcept`, `override`, реализуются инлайн в заголовке.
+- **Подводный камень:** `pop()` возвращает копию — тип `T` должен быть copy-constructible. Если нет — код не скомпилируется.
+
+**Структура `stack.hpp`:**
 
 ```cpp
-// stack.hpp
 #pragma once
 #include "stack_errors.hpp"
 
@@ -251,57 +242,23 @@ public:
 #include "stack_impl.hpp"
 ```
 
-**Алгоритм реализации методов** (`stack_impl.hpp`):
-
-```cpp
-// stack_impl.hpp  (не нужен #pragma once — включается ровно один раз через stack.hpp)
-
-template <typename T, int MaxSize>
-void Stack<T, MaxSize>::push(const T& value) {
-    if (is_full()) throw StackOverflow{};
-    data_[top_++] = value;
-}
-
-template <typename T, int MaxSize>
-T Stack<T, MaxSize>::pop() {
-    if (is_empty()) throw StackUnderflow{};
-    return data_[--top_];  // top_ уменьшается до возврата
-}
-
-template <typename T, int MaxSize>
-const T& Stack<T, MaxSize>::peek() const {
-    if (is_empty()) throw StackUnderflow{};
-    return data_[top_ - 1];
-}
-```
-
-> **Подводный камень:** `T pop()` возвращает **копию** — элемент на вершине не удаляется, только уменьшается `top_`. Если T не copy-constructible — код не скомпилируется.
+> **Примечание:** реализацию методов шаблонного класса помещать в `stack_impl.hpp` (без `#pragma once`), который включается в конце `stack.hpp` — стандартная практика для template definitions.
 
 ---
 
 #### Часть В: Шаблонная функция `print_stack_info`
 
-Цель: практика `typeid` и `dynamic_cast` на реальном примере. Функция тоже шаблонная — пример шаблонной функции помимо шаблонного класса.
-
 ```cpp
-// объявить в stack.hpp после определения Stack,
-// или отдельно в stack_impl.hpp
 template <typename T, int MaxSize>
-void print_stack_info(const Stack<T, MaxSize>& s) {
-    // 1. typeid: тип элементов
-    std::cout << "Stack<" << typeid(T).name() << ", " << MaxSize << ">\n";
-    std::cout << "  size=" << s.size()
-              << "  empty=" << s.is_empty()
-              << "  full=" << s.is_full() << "\n";
-
-    // 2. dynamic_cast: RTTI-проверка через базовый интерфейс
-    const IStack* base = static_cast<const IStack*>(&s);
-    const auto*   derived = dynamic_cast<const Stack<T, MaxSize>*>(base);
-    std::cout << "  RTTI: " << (derived ? "[OK]" : "[FAIL]") << "\n";
-}
+void print_stack_info(const Stack<T, MaxSize>& s);
 ```
 
-> **Почему `static_cast` а не просто взять `&s`?** `dynamic_cast` работает только по указателю/ссылке на полиморфный тип. Делаем имитацию реального сценария: есть `IStack*`, хотим узнать реальный тип.
+Функция тоже шаблонная — пример шаблонной функции помимо шаблонного класса. Должна выполнить:
+
+1. Вывести `typeid(T).name()` — манглед имени типа элементов (на GCC: `i` — `int`, `PKc` — `const char*`).
+2. Вывести `MaxSize`, `size()`, `is_empty()`, `is_full()`.
+3. Получить `const IStack*` через `static_cast` (имитация реального сценария: есть указатель на базовый интерфейс, хотим выяснить реальный тип).
+4. `dynamic_cast<const Stack<T, MaxSize>*>` по тому `IStack*` — если не-`nullptr`, вывести `[RTTI OK]`, иначе `[RTTI FAIL]`.
 
 ---
 
@@ -315,7 +272,6 @@ int main() {
     Stack<int, 5> int_stack;
     print_stack_info<int, 5>(int_stack);
 
-    // Заполнить стек до краёв
     for (int i = 1; i <= 5; ++i)
         int_stack.push(i * 10);
 
@@ -324,34 +280,25 @@ int main() {
     // Попытка переполнения — catch по иерархии
     try {
         int_stack.push(999);
-    } catch (const StackOverflow& e) {           // сначала производный
+    } catch (const StackOverflow& e) {
         std::cerr << "[StackOverflow]  " << e.what() << "\n";
-    } catch (const StackError& e) {              // затем базовый
+    } catch (const StackError& e) {
         std::cerr << "[StackError]     " << e.what() << "\n";
-    } catch (const std::exception& e) {          // последний резерв
+    } catch (const std::exception& e) {
         std::cerr << "[std::exception] " << e.what() << "\n";
     }
 
-    // Выгрузить весь стек
     while (!int_stack.is_empty())
         std::cout << int_stack.pop() << " ";
     std::cout << "\n";
 
-    // Попытка pop на пустом стеке
-    try {
-        int_stack.pop();
-    } catch (const StackUnderflow& e) {
+    try { int_stack.pop();  } catch (const StackUnderflow& e) {
+        std::cerr << "[StackUnderflow] " << e.what() << "\n";
+    }
+    try { int_stack.peek(); } catch (const StackUnderflow& e) {
         std::cerr << "[StackUnderflow] " << e.what() << "\n";
     }
 
-    // Проверка peek на пустом стеке
-    try {
-        int_stack.peek();
-    } catch (const StackUnderflow& e) {
-        std::cerr << "[StackUnderflow] " << e.what() << "\n";
-    }
-
-    // Инстанциация с другим типом
     Stack<const char*, 3> str_stack;
     str_stack.push("hello");
     str_stack.push("world");
@@ -363,31 +310,25 @@ int main() {
 
 **Ожидаемый вывод:**
 ```
-Stack<i, 5>
-  size=0  empty=1  full=0
-  RTTI: [OK]
-Stack<i, 5>
-  size=5  empty=0  full=1
-  RTTI: [OK]
+Stack<i, 5>  size=0  empty=1  full=0  RTTI: [OK]
+Stack<i, 5>  size=5  empty=0  full=1  RTTI: [OK]
 [StackOverflow]  Stack overflow: cannot push to a full stack
 50 40 30 20 10
 [StackUnderflow] Stack underflow: cannot pop from an empty stack
 [StackUnderflow] Stack underflow: cannot pop from an empty stack
-Stack<PKc, 3>
-  size=2  empty=0  full=0
-  RTTI: [OK]
+Stack<PKc, 3>  size=2  empty=0  full=0  RTTI: [OK]
 ```
 
-> `typeid(int).name()` на GCC даёт `i`, на MSVC — `int`. Для человеческого вывода можно дополнительно использовать `abi::__cxa_demangle` (необязательно).
+> `typeid(int).name()` на GCC даёт `i`, на MSVC — `int`. Для объектного вывода можно дополнительно использовать `abi::__cxa_demangle` (необязательно).
 
 ---
 
 #### Структура файлов:
 
 ```
-stack_errors.hpp   — иерархия исключений (StackError, StackOverflow, StackUnderflow)
-stack.hpp          — IStack + объявление Stack<T,N> + объявление print_stack_info
-stack_impl.hpp     — реализация push/pop/peek + реализация print_stack_info
+stack_errors.hpp   — иерархия исключений
+stack.hpp          — IStack + объявление Stack<T,N>
+stack_impl.hpp     — реализация push/pop/peek + print_stack_info
 main.cpp           — демонстрация
 ```
 
@@ -397,8 +338,8 @@ main.cpp           — демонстрация
 - [ ] `StackUnderflow` пойман раньше `StackError` в цепочке `catch`
 - [ ] `dynamic_cast` возвращает не-`nullptr` (вывод `[RTTI OK]`)
 - [ ] `Stack<int,5>` и `Stack<double,5>` — независимые типы, не конвертируются друг в друга
+- [ ] `peek()` не меняет `top_` (проверить: `peek()` → `push()` → вершина не изменилась)
 - [ ] `valgrind --leak-check=full` — отсутствие утечек
-- [ ] `peek()` не модифицирует стек (проверить: `peek()` -> `push()` -> вершина не изменилась)
 
 ---
 
@@ -408,9 +349,9 @@ main.cpp           — демонстрация
 - **Функции** не более 25 строк.
 - `const`-корректность и `noexcept` там, где уместно.
 - Исключения наследовать от `std::exception` и переопределять `what()`.
-- Демонстрировать `catch` по иерархии: сначала производный тип, затем базовый (`StackOverflow` → `StackError` → `std::exception`).
-- Использовать `typeid` и `dynamic_cast` в `print_stack_info`.
-- Проверить отсутствие утечек памяти через `valgrind`.
+- `catch` по иерархии: производный → базовый (`StackOverflow` → `StackError` → `std::exception`).
+- `typeid` и `dynamic_cast` в `print_stack_info`.
+- `valgrind --leak-check=full` — без утечек.
 
 ---
 
